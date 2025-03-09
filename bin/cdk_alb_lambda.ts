@@ -3,6 +3,10 @@ import * as cdk from 'aws-cdk-lib';
 import { CdkAlbLambdaStack } from '../lib/cdk_alb_lambda-stack';
 
 const app = new cdk.App();
+
+// コマンドライン引数から設定を取得
+const useSqs = app.node.tryGetContext('use-sqs') === 'true';
+
 new CdkAlbLambdaStack(app, 'CdkAlbLambdaStack', {
   /* If you don't specify 'env', this stack will be environment-agnostic.
    * Account/Region-dependent features and context lookups will not work,
@@ -17,4 +21,11 @@ new CdkAlbLambdaStack(app, 'CdkAlbLambdaStack', {
   // env: { account: '123456789012', region: 'us-east-1' },
 
   /* For more information, see https://docs.aws.amazon.com/cdk/latest/guide/environments.html */
+
+  // SQSオプションの設定
+  useSqs: useSqs,
 });
+
+// コンフィグの出力
+console.log(`Deploying stack with the following configuration:`);
+console.log(`- SQS: ${useSqs ? 'Enabled' : 'Disabled'}`);

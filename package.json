@@ -1,8 +1,8 @@
 {
-  "name": "cdk_alb_lambda",
+  "name": "cdkCloudFrontLambdaS3APIGatewaySQS",
   "version": "0.1.0",
   "bin": {
-    "cdk_alb_lambda": "bin/cdk_alb_lambda.js"
+    "cdkCloudFrontLambdaS3APIGatewaySQS": "bin/cdkCloudFrontLambdaS3APIGatewaySQS.js"
   },
   "scripts": {
     "build": "tsc",
@@ -13,7 +13,7 @@
     "test:ci": "JEST_HIDE_LOGS=true jest --forceExit --detectOpenHandles --ci --runInBand",
     "test:lambda": "jest 'test/lambda/.*\\.test\\.ts' --forceExit",
     "test:infra": "jest 'test/constructs/.*\\.test\\.ts' --forceExit",
-    "test:stack": "jest 'test/cdk_alb_lambda-stack\\.test\\.ts' --forceExit",
+    "test:stack": "jest 'test/cdkCloudFrontLambdaS3APIGatewaySQS-stack\\.test\\.ts' --forceExit",
     "cdk": "cdk"
   },
   "devDependencies": {

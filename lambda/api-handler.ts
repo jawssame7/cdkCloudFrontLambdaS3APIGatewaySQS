@@ -12,10 +12,11 @@ import { streamToString, createResponse } from './utils';
 const BUCKET_NAME = process.env.BUCKET_NAME || '';
 const QUEUE_URL = process.env.QUEUE_URL || '';
 
-// AWSクライアントの初期化（リージョンを明示的に指定）
-const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
-const s3Client = new S3Client({ region: AWS_REGION });
-const sqsClient = new SQSClient({ region: AWS_REGION });
+// AWSクライアントの初期化
+// AWS_REGIONはLambda実行環境で自動的に設定されるため、明示的に指定しない
+// SDKはデフォルトで環境変数を参照する
+const s3Client = new S3Client({});
+const sqsClient = new SQSClient({});
 
 /**
  * API Gateway Lambda ハンドラー

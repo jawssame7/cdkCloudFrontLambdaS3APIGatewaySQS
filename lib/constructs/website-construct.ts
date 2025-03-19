@@ -56,20 +56,6 @@ export class WebsiteConstruct extends Construct {
       enforceSSL: true,
     });
 
-    // CloudFrontのOriginAccessControl (OAC) を作成
-    const cfnOriginAccessControl = new cloudfront.CfnOriginAccessControl(
-      this,
-      'OriginAccessControl',
-      {
-        originAccessControlConfig: {
-          name: `${id}-OAC`,
-          originAccessControlOriginType: 's3',
-          signingBehavior: 'always',
-          signingProtocol: 'sigv4',
-        },
-      }
-    );
-
     // バケットポリシーを設定して、CloudFrontからのアクセスを許可
     this.bucket.addToResourcePolicy(
       new iam.PolicyStatement({
@@ -86,15 +72,28 @@ export class WebsiteConstruct extends Construct {
       })
     );
 
+    // APIリクエスト用のポリシーを作成
+    const apiOriginRequestPolicy = new cloudfront.OriginRequestPolicy(
+      this,
+      'ApiOriginRequestPolicy',
+      {
+        headerBehavior: cloudfront.OriginRequestHeaderBehavior.allowList(
+          'Content-Type',
+          'X-Api-Key',
+          'Origin',
+          'Access-Control-Request-Method',
+          'Access-Control-Request-Headers'
+        ),
+        queryStringBehavior: cloudfront.OriginRequestQueryStringBehavior.all(),
+        cookieBehavior: cloudfront.OriginRequestCookieBehavior.none(),
+      }
+    );
+
     // CloudFrontディストリビューションの作成
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultRootObject: 'index.html',
       defaultBehavior: {
-        origin: new origins.HttpOrigin(
-          `${this.bucket.bucketName}.s3.${
-            cdk.Stack.of(this).region
-          }.amazonaws.com`
-        ),
+        origin: origins.S3BucketOrigin.withOriginAccessControl(this.bucket),
         compress: true,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -106,7 +105,10 @@ export class WebsiteConstruct extends Construct {
               origin: new origins.RestApiOrigin(props.apiGateway),
               allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
               cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-              originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER,
+              originRequestPolicy: apiOriginRequestPolicy,
+              // 組み込みのCORSサポートを使用
+              responseHeadersPolicy:
+                cloudfront.ResponseHeadersPolicy.CORS_ALLOW_ALL_ORIGINS,
             },
           }
         : undefined,
@@ -125,20 +127,35 @@ export class WebsiteConstruct extends Construct {
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
     });
 
-    // OACをCloudFrontの最初のオリジンに関連付け（L1構成を使用）
-    const cfnDistribution = this.distribution.node
-      .defaultChild as cloudfront.CfnDistribution;
-    cfnDistribution.addPropertyOverride(
-      'DistributionConfig.Origins.0.OriginAccessControlId',
-      cfnOriginAccessControl.attrId
-    );
-
     // S3にウェブサイトファイルをデプロイ
     new s3deploy.BucketDeployment(this, 'DeployWebsite', {
       sources: [s3deploy.Source.asset(props.websiteSourcePath)],
       destinationBucket: this.bucket,
       distribution: this.distribution,
       distributionPaths: ['/*'],
+      // デプロイメント用のカスタムロールを作成
+      role: new iam.Role(this, 'WebsiteDeploymentRole', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        inlinePolicies: {
+          CloudFrontInvalidation: new iam.PolicyDocument({
+            statements: [
+              new iam.PolicyStatement({
+                actions: [
+                  'cloudfront:CreateInvalidation',
+                  'cloudfront:GetInvalidation',
+                ],
+                resources: ['*'],
+              }),
+            ],
+          }),
+        },
+        // Lambda実行に必要な基本的な権限も追加
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            'service-role/AWSLambdaBasicExecutionRole'
+          ),
+        ],
+      }),
     });
 
     // 出力値の定義

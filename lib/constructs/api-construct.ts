@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import { CfnAccount } from 'aws-cdk-lib/aws-apigateway';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
@@ -76,6 +77,25 @@ export class ApiConstruct extends Construct {
       props.queue.grantSendMessages(lambdaRole);
     }
 
+    // CloudWatch Logsへのアクセス権を持つロールを作成
+    const apiGatewayCloudWatchRole = new iam.Role(
+      this,
+      'ApiGatewayCloudWatchRole',
+      {
+        assumedBy: new iam.ServicePrincipal('apigateway.amazonaws.com'),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            'service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+          ),
+        ],
+      }
+    );
+
+    // API GatewayアカウントにCloudWatchロールを設定
+    new CfnAccount(this, 'ApiGatewayAccount', {
+      cloudWatchRoleArn: apiGatewayCloudWatchRole.roleArn,
+    });
+
     // Lambda関数の作成
     this.handler = new NodejsFunction(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_18_X,
@@ -85,7 +105,6 @@ export class ApiConstruct extends Construct {
       environment: {
         BUCKET_NAME: props.storageBucket.bucketName,
         QUEUE_URL: props.queue ? props.queue.queueUrl : '',
-        AWS_REGION: cdk.Stack.of(this).region,
       },
       bundling: {
         externalModules: ['@aws-sdk/client-s3', '@aws-sdk/client-sqs'],

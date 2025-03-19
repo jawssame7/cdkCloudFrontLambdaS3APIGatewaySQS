@@ -63,42 +63,110 @@
         margin-top: 20px;
         white-space: pre-wrap;
       }
+      .loader {
+        display: none;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        animation: spin 2s linear infinite;
+        margin: 10px auto;
+      }
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
     </style>
   </head>
   <body>
     <h1>AWS CDK サンプルアプリケーション</h1>
 
+    <div id="api-status">APIステータス: 確認中...</div>
+
     <div class="section">
       <h2>ファイルのアップロード</h2>
       <input type="text" id="fileName" placeholder="ファイル名" />
       <textarea id="fileContent" placeholder="ファイルの内容"></textarea>
-      <button onclick="uploadFile()">アップロード</button>
+      <button id="uploadButton" onclick="uploadFile()">アップロード</button>
+      <div class="loader" id="uploadButtonLoader"></div>
     </div>
 
     <div class="section">
       <h2>ファイルの取得</h2>
       <input type="text" id="getFileName" placeholder="ファイル名" />
-      <button onclick="getFile()">取得</button>
+      <button id="getButton" onclick="getFile()">取得</button>
+      <div class="loader" id="getButtonLoader"></div>
     </div>
 
     <div class="section">
       <h2>SQSにメッセージを送信</h2>
       <textarea id="queueMessage" placeholder="メッセージ内容"></textarea>
-      <button onclick="sendToQueue()">送信</button>
+      <button id="sqsButton" onclick="sendToQueue()">送信</button>
+      <div class="loader" id="sqsButtonLoader"></div>
     </div>
 
     <div id="results"></div>
 
     <script>
+      // 相対パスとして指定（CloudFrontからAPI Gatewayへのルーティングは自動的に処理される）
       const API_BASE_URL = '/api';
       const resultsElement = document.getElementById('results');
+      const apiStatusElement = document.getElementById('api-status');
 
+      // 初期化時にAPIの状態を確認
+      window.addEventListener('DOMContentLoaded', checkApiStatus);
+
+      // APIステータスを確認する関数
+      async function checkApiStatus() {
+        try {
+          apiStatusElement.textContent = 'APIステータス: 確認中...';
+          // タイムアウト処理を追加（5秒経過したらタイムアウト）
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+          // ファイルエンドポイントの疎通確認（リクエストを送るだけで結果は使わない）
+          const response = await fetch(`${API_BASE_URL}/files/test.txt`, {
+            signal: controller.signal,
+            method: 'GET',
+          });
+
+          clearTimeout(timeoutId);
+
+          if (response.ok) {
+            apiStatusElement.textContent =
+              'APIステータス: 正常に接続されています';
+            apiStatusElement.style.color = 'green';
+          } else {
+            apiStatusElement.textContent = `APIステータス: エラー (${response.status})`;
+            apiStatusElement.style.color = 'red';
+          }
+        } catch (error) {
+          apiStatusElement.textContent = `APIステータス: 接続エラー - ${error.message}`;
+          apiStatusElement.style.color = 'red';
+          console.error('API疎通確認エラー:', error);
+        }
+      }
+
+      // 結果表示のヘルパー関数
       function showResult(result) {
         if (typeof result === 'object') {
           resultsElement.textContent = JSON.stringify(result, null, 2);
         } else {
           resultsElement.textContent = result;
         }
+      }
+
+      // ローディング表示の制御
+      function setLoading(id, isLoading) {
+        const button = document.getElementById(id);
+        const loader = document.getElementById(`${id}Loader`);
+        button.disabled = isLoading;
+        loader.style.display = isLoading ? 'block' : 'none';
       }
 
       async function uploadFile() {
@@ -110,6 +178,8 @@
           return;
         }
 
+        setLoading('uploadButton', true);
+
         try {
           const response = await fetch(`${API_BASE_URL}/files`, {
             method: 'POST',
@@ -119,10 +189,17 @@
             body: JSON.stringify({ fileName, content }),
           });
 
+          if (!response.ok) {
+            throw new Error(`HTTP エラー: ${response.status}`);
+          }
+
           const result = await response.json();
           showResult(result);
         } catch (error) {
           showResult({ error: `エラーが発生しました: ${error.message}` });
+          console.error('アップロードエラー:', error);
+        } finally {
+          setLoading('uploadButton', false);
         }
       }
 
@@ -134,8 +211,15 @@
           return;
         }
 
+        setLoading('getButton', true);
+
         try {
           const response = await fetch(`${API_BASE_URL}/files/${fileName}`);
+
+          if (!response.ok) {
+            throw new Error(`HTTP エラー: ${response.status}`);
+          }
+
           const contentType = response.headers.get('Content-Type');
 
           if (contentType && contentType.includes('application/json')) {
@@ -147,6 +231,9 @@
           }
         } catch (error) {
           showResult({ error: `エラーが発生しました: ${error.message}` });
+          console.error('ファイル取得エラー:', error);
+        } finally {
+          setLoading('getButton', false);
         }
       }
 
@@ -158,6 +245,8 @@
           return;
         }
 
+        setLoading('sqsButton', true);
+
         try {
           const response = await fetch(`${API_BASE_URL}/queue`, {
             method: 'POST',
@@ -167,10 +256,17 @@
             body: JSON.stringify({ message }),
           });
 
+          if (!response.ok) {
+            throw new Error(`HTTP エラー: ${response.status}`);
+          }
+
           const result = await response.json();
           showResult(result);
         } catch (error) {
           showResult({ error: `エラーが発生しました: ${error.message}` });
+          console.error('SQSエラー:', error);
+        } finally {
+          setLoading('sqsButton', false);
         }
       }
     </script>
